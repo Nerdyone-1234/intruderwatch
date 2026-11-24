@@ -1,0 +1,4 @@
+#!/bin/bash
+# Nimmt ein Webcam-Foto auf. Arg1 = Zielpfad (Default: ~/Desktop/maccam.jpg).
+OUT="${1:-$HOME/Desktop/maccam.jpg}"
+exec /opt/homebrew/bin/imagesnap -q -w 1.0 "$OUT"

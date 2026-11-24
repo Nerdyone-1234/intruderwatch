@@ -1,0 +1,18 @@
+# Aufgenommene Beweisfotos / Metadaten NIE committen (Gesichter, Standort)
+Pictures/
+*.jpg
+*.jpeg
+*.png
+# Laufzeit-Logs
+*.log
+*.err
+snap.done
+secret.txt
+.DS_Store
+__pycache__/
+*.pyc
+# Eigene Einstellungen / Zugangsdaten (nie ins Repo)
+config.sh
+telegram.json
+# Handy-Selfie-Videos
+*.mkv
