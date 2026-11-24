@@ -1,228 +1,225 @@
 # IntruderWatch
 
-Anti-Diebstahl-Stolperdraht für den eigenen Mac + das eigene Android-Handy.
+Anti-theft tripwire for your own Mac and your own Android phone.
 
-Wenn am Sperrbildschirm des MacBooks mehrmals hintereinander das falsche Passwort
-eingegeben wird, macht IntruderWatch ein Foto mit der Mac-Webcam und – über adb per
-USB-Kabel oder WLAN – mit der Frontkamera des Handys, holt den Standort des Handys,
-schickt alles per Telegram und fährt den Mac danach herunter (abbrechbar mit
-Passwort + Geheimantwort).
+When someone enters the wrong password on the MacBook lock screen several times in
+a row, IntruderWatch takes a photo with the Mac webcam and – via adb over a USB
+cable or Wi-Fi – with the phone's front camera, reads the phone's location, sends
+everything to Telegram and then shuts the Mac down (you can cancel with your
+password + a secret answer).
 
-> **Nur für die eigenen Geräte.** Siehe [Rechtliches](#rechtliches) unten.
+> **For your own devices only.** See [Legal](#legal) below.
 
-## Teile
+> The scripts, log messages and Telegram texts are in German.
 
-- `mac/intruder-watch.sh` – lauscht im macOS-Log auf fehlgeschlagene Anmeldungen
-  (Schwelle: 2 Fehlversuche in 120 s, danach 5 min Ruhe).
-- `mac/intruder-snap.sh` – löst Foto aus, holt Daten vom Handy, sperrt es.
-- `mac/phone-lib.sh` – Handy-Verbindung: WLAN-adb zuerst, USB nur als Notfall.
-- `mac/de.intruderwatch.plist.template` – launchd-Agent (startet beim Login).
-- `mac/last_location.py` – letzter bekannter Handy-Standort aus `dumpsys location`.
-- `mac/config.example.sh` – Vorlage für die eigenen Einstellungen.
-- `phone/snap.sh` – läuft in Termux auf dem Handy: WLAN-Info + Standort.
+## Components
 
-## Voraussetzungen
+- `mac/intruder-watch.sh` – watches the macOS log for failed logins
+  (threshold: 2 failed attempts within 120 s, then 5 min cooldown).
+- `mac/intruder-snap.sh` – takes the photos, fetches data from the phone, locks it.
+- `mac/phone-lib.sh` – phone connection (Wi-Fi adb first, USB as fallback) and selfie.
+- `mac/de.intruderwatch.plist.template` – launchd agent (starts at login).
+- `mac/last_location.py` – last known phone location from `dumpsys location`.
+- `mac/config.example.sh` – template for your own settings.
+- `phone/snap.sh` – runs in Termux on the phone: Wi-Fi info + location.
 
-- Mac (Apple Silicon, Homebrew unter `/opt/homebrew`) mit
-  `brew install imagesnap scrcpy ffmpeg` und `brew install --cask android-platform-tools` (adb).
-- Android-Handy mit aktiviertem USB-Debugging (Selfie per scrcpy braucht
-  Android 12+; getestet mit Samsung Galaxy, Android 16). Verbunden per USB-Kabel
-  **oder** WLAN (siehe „Handy: Kabel oder WLAN“ unten).
-- Termux + Termux:API auf dem Handy, `pkg install termux-api`.
-- Berechtigungen für Termux:API: Standort (das Selfie macht der Mac per scrcpy).
-- `phone/snap.sh` liegt auf dem Handy unter
-  `~/bin/snap.sh` (Termux-Home), dazu `allow-external-apps=true`
-  in `~/.termux/termux.properties`.
+## Requirements
 
-## Installieren (Mac)
+- Mac (Apple Silicon, Homebrew in `/opt/homebrew`) with
+  `brew install imagesnap scrcpy ffmpeg` and `brew install --cask android-platform-tools` (adb).
+- Android phone with USB debugging enabled (the scrcpy selfie needs Android 12+;
+  tested with a Samsung Galaxy on Android 16). Connected by USB cable **or** Wi-Fi
+  (see "Phone: cable or Wi-Fi" below).
+- Termux + Termux:API on the phone, `pkg install termux-api`.
+- Termux:API permission: location (the Mac takes the selfie via scrcpy).
+- `phone/snap.sh` goes to `~/bin/snap.sh` on the phone (Termux home), plus
+  `allow-external-apps=true` in `~/.termux/termux.properties`.
+
+## Install (Mac)
 
 ```bash
 ./install.sh
 ```
 
-Setzt die Skripte nach `~/Library/IntruderWatch/`, trägt den eigenen Benutzerpfad
-in die plist ein und lädt den launchd-Agent.
+Copies the scripts to `~/Library/IntruderWatch/`, fills your home path into the
+plist and loads the launchd agent.
 
-## Konfiguration
+## Configuration
 
-Eigene Einstellungen stehen in `~/Library/IntruderWatch/config.sh` (legt
-`install.sh` aus `mac/config.example.sh` an, gehört nicht ins Repo):
+Your own settings live in `~/Library/IntruderWatch/config.sh` (`install.sh`
+creates it from `mac/config.example.sh`; it never goes into the repo):
 
-- `PHONE_WIFI` – IP:Port des Handys für WLAN-adb. Leer = nur USB-Kabel.
-- `PHONE_USB` – USB-Seriennummer (`adb devices`). Leer = erstes USB-Gerät.
-- `PHONE_CAM_ID` – Kamera fürs Selfie (`scrcpy --list-cameras`, meist 1 = vorne).
-- `TG_CONFIG` – Pfad zur Telegram-JSON-Datei.
+- `PHONE_WIFI` – phone IP:port for Wi-Fi adb. Empty = USB cable only.
+- `PHONE_USB` – USB serial (`adb devices`). Empty = first USB device.
+- `PHONE_CAM_ID` – camera for the selfie (`scrcpy --list-cameras`, usually 1 = front).
+- `TG_CONFIG` – path to the Telegram JSON file.
 
-Schwelle/Fenster/Ruhezeit oben in `mac/intruder-watch.sh`.
+Threshold/window/cooldown are at the top of `mac/intruder-watch.sh`.
 
-## Telegram-Alert
+## Telegram alert
 
-Bot bei [@BotFather](https://t.me/BotFather) anlegen, dann eine Datei
-`~/Library/IntruderWatch/telegram.json` (oder Pfad aus `TG_CONFIG`) mit
-`{"token": "<bot-token>", "allowed_chat_id": "<deine-chat-id>"}` anlegen und
-`chmod 600` setzen. Bei jedem Vorfall kommt ein `sendPhoto` mit Bildvorschau,
-Zeit, Mac-Name und Standort-Link. **Der Token gehört nie ins Repo.**
+Create a bot with [@BotFather](https://t.me/BotFather), then create
+`~/Library/IntruderWatch/telegram.json` (or the path in `TG_CONFIG`) containing
+`{"token": "<bot-token>", "allowed_chat_id": "<your-chat-id>"}` and
+`chmod 600` it. Every incident sends a `sendPhoto` with preview, time, Mac name
+and a location link. **Never put the token in the repo.**
 
-### Warteschlange, wenn Telegram blockiert ist
+### Queue when Telegram is blocked
 
-Blockiert das WLAN Telegram (Schul-/Firmennetz, Hotspot ohne Daten, offline)
-oder antwortet Telegram nicht mit `"ok":true`, wird das Foto samt Text in
-`~/Library/IntruderWatch/queue/` abgelegt (Kopie des Fotos, **kein Token**).
-Einträge werden atomar angelegt (erst `.tmp-*`, dann umbenannt). Nur
-vorübergehende Fehler (offline, blockiert, 429/5xx) werden wiederholt; eine
-dauerhafte Ablehnung (4xx, Datei ist kein JPEG) landet in `queue/.failed/` und
-blockiert die übrigen Fotos nicht. Eine verwaiste Sperre (> 5 min) wird übernommen.
-Der Wächter versucht alle `FLUSH_EVERY` (60) s erneut und direkt nach Login/
-Neustart – sobald Telegram erreichbar ist, kommen die Fotos mit dem Hinweis
-„⏳ Verspätet gesendet“ an. Einträge älter als 30 Tage werden verworfen.
-Logik in `mac/telegram-lib.sh`, Tests: `bash tests/test-telegram-lib.sh`.
+If the network blocks Telegram (school/company network, hotspot without data,
+offline) or Telegram does not answer `"ok":true`, the photo and caption are stored
+in `~/Library/IntruderWatch/queue/` (a copy of the photo, **no token**). Entries
+are written atomically (`.tmp-*` first, then renamed). Only temporary errors
+(offline, blocked, 429/5xx) are retried; a permanent rejection (4xx, file is not a
+JPEG) goes to `queue/.failed/` and does not block the other photos. A stale lock
+(> 5 min) is taken over. The watcher retries every `FLUSH_EVERY` (60) s and right
+after login/restart – as soon as Telegram is reachable, the photos arrive marked
+"⏳ Verspätet gesendet" (sent late). Entries older than 30 days are dropped.
+Logic in `mac/telegram-lib.sh`, tests: `bash tests/test-telegram-lib.sh`.
 
-## Lokale Kopie auf dem Handy
+## Local copy on the phone
 
-Jedes Foto wird zusätzlich nach `/sdcard/Pictures/IntruderWatch/` auf dem Handy
-kopiert und ein Media-Scan angestoßen, sodass es in der Galerie auftaucht.
+Each phone photo is also copied to `/sdcard/Pictures/IntruderWatch/` on the phone
+and a media scan is triggered, so it shows up in the gallery.
 
-## Mac-Webcam-Foto
+## Mac webcam photo
 
-Zusätzlich zum Handy macht der Mac ein Webcam-Foto (über `MacCamSnap.app`,
-siehe unten). macOS schützt die Kamera über TCC, deshalb muss
-dem ausführenden Prozess einmal **Kamerazugriff** erteilt werden
-(System­einstellungen → Datenschutz & Sicherheit → Kamera). Fehlt die Freigabe,
-wird das Mac-Foto übersprungen und im Log vermerkt; Handy-Foto und Telegram
-laufen trotzdem.
+Besides the phone, the Mac takes a webcam photo (via `MacCamSnap.app`, see below).
+macOS protects the camera with TCC, so the process needs **camera access** once
+(System Settings → Privacy & Security → Camera). Without it the Mac photo is
+skipped and logged; phone photo and Telegram still work.
 
-## Herunterfahren
+## Shutdown
 
-Oben in `mac/intruder-snap.sh`:
+At the top of `mac/intruder-snap.sh`:
 
-- `ENABLE_SHUTDOWN=1` – Mac nach dem Vorfall herunterfahren (`0` = aus).
-- `SHUTDOWN_WHEN=after_capture` – **empfohlen**: erst herunterfahren, wenn
-  Fotos + Telegram gesichert sind (sonst wird der Upload abgebrochen).
-  `immediate` fährt sofort herunter und verliert i. d. R. das Beweisfoto.
+- `ENABLE_SHUTDOWN=1` – shut the Mac down after an incident (`0` = off).
+- `SHUTDOWN_WHEN=after_capture` – **recommended**: shut down only after photos and
+  Telegram are done (otherwise the upload is cut off). `immediate` shuts down right
+  away and usually loses the evidence photo.
 
-**Deckel zu → kein Herunterfahren.** Ist der Deckel beim Herunterfahren
-geschlossen, wird es übersprungen (die Geheimfrage kann dann niemand
-beantworten). Der Mac schläft gesperrt; Fotos und Telegram sind schon raus.
+**Lid closed → no shutdown.** If the lid is closed at shutdown time, it is skipped
+(nobody could answer the secret question). The Mac sleeps locked; photos and
+Telegram are already out.
 
-## MacCamSnap.app (Kamera-Freigabe im Dauerbetrieb)
+## MacCamSnap.app (camera access for the background service)
 
-macOS gibt die Kamera nur signierten Apps frei, nicht einem launchd-Bash-Job.
-Deshalb liegt `imagesnap` in einem kleinen App-Bundle `MacCamSnap.app`
-(Quellen unter `mac/MacCamSnap/`, Bau per `mac/build-cam-app.sh`). Der Dienst
-startet es per `open`. **Einmalig** nach dem Bauen die App starten und im
-macOS-Dialog die Kamera erlauben:
+macOS only grants camera access to signed apps, not to a launchd bash job. That's
+why `imagesnap` sits in a small app bundle `MacCamSnap.app` (sources in
+`mac/MacCamSnap/`, built by `mac/build-cam-app.sh`). The service starts it with
+`open`. **Once** after building, start the app and allow the camera in the macOS
+dialog:
 
 ```bash
-open ~/Library/IntruderWatch/MacCamSnap.app --args ~/Desktop/kameratest.jpg
+open ~/Library/IntruderWatch/MacCamSnap.app --args ~/Desktop/cameratest.jpg
 ```
 
-## Herunterfahren stoppen
+## Cancelling the shutdown
 
-Nach Fotos + Telegram (Logik in `mac/abort-lib.sh`, Tests: `bash tests/test-abort-lib.sh`):
+After photos + Telegram (logic in `mac/abort-lib.sh`, tests: `bash tests/test-abort-lib.sh`):
 
-1. **Mac gesperrt:** IntruderWatch wartet bis zu 60 s, dass du ihn mit deinem
-   Passwort entsperrst. Bleibt er gesperrt → Herunterfahren.
-2. **Mac entsperrt:** Jetzt erscheint das Popup (ohne Fragetext, verdeckte
-   Eingabe). Gib die Antwort aus `~/Library/IntruderWatch/secret.txt` ein
-   (Groß-/Klein egal). Richtig → kein Herunterfahren. Falsch → Popup kommt
-   wieder. Keine richtige Antwort binnen 60 s → Herunterfahren.
+1. **Mac locked:** IntruderWatch waits up to 60 s for you to unlock it with your
+   password. If it stays locked → shutdown.
+2. **Mac unlocked:** now a popup appears (no question text, hidden input). Enter the
+   answer from `~/Library/IntruderWatch/secret.txt` (case-insensitive). Correct →
+   no shutdown. Wrong → the popup comes back. No correct answer within 60 s → shutdown.
 
-Das Popup kommt erst nach dem Entsperren, weil macOS keine Fenster über dem
-Sperrbildschirm zeigt. Ohne `secret.txt` reicht das Entsperren.
+The popup only appears after unlocking because macOS shows no windows above the
+lock screen. Without `secret.txt`, unlocking is enough.
 
-Schutz vor Fehlalarmen: Ist während des Wartens der **Deckel zu** oder das
-**Display aus**, sitzt niemand am Mac → kein Herunterfahren.
+False-alarm protection: if the **lid is closed** or the **display is off** while
+waiting, nobody is at the Mac → no shutdown.
 
-## Erzwungenes Herunterfahren
+## Forced shutdown
 
-Das Herunterfahren wird erzwungen, auch wenn offene Terminals/Apps nachfragen:
-zuerst `sudo -n /sbin/shutdown` (sobald einmal eingerichtet, siehe
-`docs/enable-force-shutdown.txt`), sonst werden Terminal/iTerm/ghostty hart
-beendet und dann heruntergefahren.
+The shutdown is forced even if open terminals/apps would ask: first
+`sudo -n /sbin/shutdown` (once set up, see `docs/enable-force-shutdown.txt`),
+otherwise Terminal/iTerm/ghostty are killed and then the Mac shuts down.
 
-## Aus-/Einschalter (Schreibtisch)
+## Off/on switch (desktop)
 
-`install.sh` legt zwei Apps auf den Schreibtisch (neu bauen: `bash mac/build-switch-apps.sh`):
+`install.sh` puts two apps on the desktop (rebuild: `bash mac/build-switch-apps.sh`):
 
-- **IntruderWatch AUS.app** – schaltet alles ab: Wächter gestoppt, bleibt auch nach
-  Neustart/Login aus, ein laufender Alarm samt Herunterfahren wird abgebrochen.
-- **IntruderWatch AN.app** – schaltet wieder ein.
+- **IntruderWatch AUS.app** (off) – turns everything off: watcher stopped, stays off
+  after restart/login, a running alarm and its shutdown are cancelled.
+- **IntruderWatch AN.app** (on) – turns it back on.
 
-Beides meldet sich per macOS-Mitteilung **und Telegram** („🔕 IntruderWatch wurde
-AUSGESCHALTET“ mit Zeit, Mac und Benutzer). Ist Telegram blockiert, wird die
-Nachricht nachgesendet (bis 24 h, auch wenn der Wächter aus ist).
-Skript: `mac/intruderwatch-switch.sh off|on|status`.
+Both report via macOS notification **and Telegram** (with time, Mac and user). If
+Telegram is blocked, the message is sent later (up to 24 h, even while the watcher
+is off). Script: `mac/intruderwatch-switch.sh off|on|status`.
 
-## Gesundheits-Check (alle 30 min)
+## Health check (every 30 min)
 
-Der launchd-Job `de.intruderwatch.health` startet `mac/intruder-health.sh` alle
-30 Minuten und nach dem Login. Er prüft Dienst, Hintergrundprozesse
-(Wächter, Log-Überwachung, `display-watch.py`), Heartbeat, Sperr-Erkennung,
-Telegram-Config, installierte Dateien und die Telegram-Warteschlange.
+The launchd job `de.intruderwatch.health` runs `mac/intruder-health.sh` every
+30 minutes and after login. It checks the service, background processes (watcher,
+log stream, `display-watch.py`), heartbeat, lock detection, Telegram config,
+installed files and the Telegram queue.
 
-- Wächter gestoppt → wird automatisch neu gestartet, Telegram: „🔧 … neu gestartet“.
-- Anderes Problem → Telegram-Warnung (gleiche Warnung höchstens alle 6 h),
-  Entwarnung „✅ wieder alles ok“, sobald behoben.
-- Absichtlich ausgeschaltet (AUS-App) → Check bleibt still.
+- Watcher stopped → restarted automatically, Telegram "🔧 … neu gestartet".
+- Other problem → Telegram warning (same warning at most every 6 h), all-clear
+  "✅ wieder alles ok" once fixed.
+- Turned off on purpose (off app) → the check stays silent.
 
-Status von Hand: `bash ~/Library/IntruderWatch/intruder-health.sh --report`
-(Logik in `mac/health-lib.sh`, Tests: `bash tests/test-health-lib.sh`).
+Manual status: `bash ~/Library/IntruderWatch/intruder-health.sh --report`
+(logic in `mac/health-lib.sh`, tests: `bash tests/test-health-lib.sh`).
 
-## Handy: Kabel oder WLAN
+## Phone: cable or Wi-Fi
 
-- **Kabel (Standard):** `PHONE_WIFI` leer lassen, Handy per USB anstecken,
-  USB-Debugging zulassen. Fertig.
-- **WLAN:** einmal per Kabel `adb tcpip 5555`, dann `PHONE_WIFI=<IP>:5555` in
-  `config.sh` (Anleitung `docs/setup-wlan-adb.txt`). USB bleibt Notfall.
+- **Cable (default):** leave `PHONE_WIFI` empty, plug the phone in via USB, allow
+  USB debugging. Done.
+- **Wi-Fi:** run `adb tcpip 5555` once over the cable, then set
+  `PHONE_WIFI=<IP>:5555` in `config.sh` (guide: `docs/setup-wlan-adb.txt`).
+  USB remains the fallback.
 
-- Im Alarm: WLAN verbunden → sofort nutzen; Port offen → neu verbinden; sonst USB,
-  falls das Kabel steckt; sonst nur Mac-Foto. Der Port-Check hat 2 s Zeitlimit.
-- Nach einem Handy-Neustart ist der WLAN-Modus aus. Der Gesundheits-Check (alle
-  30 min) schaltet ihn per `adb tcpip 5555` wieder ein, sobald das Kabel steckt,
-  und verbindet neu. Im Alarm selbst passiert das nie (würde USB kurz trennen).
-- Selfie: `scrcpy --video-source=camera --camera-id=1` nimmt 3 s Video auf, das
-  letzte Bild wird `selfie.jpg`, das Video bleibt als `selfie.mkv`. Klappt auch bei
-  gesperrtem Handy und zeigt dort nichts an. Termux:API darf die Kamera unter
-  Android 16 im Hintergrund nicht. Kamera-ID in `PHONE_CAM_ID`. Je nach Lage des
-  Handys kann das Bild auf dem Kopf stehen.
-- Standort: kommt Termux nicht dran, liest der Mac den letzten bekannten Standort
-  per `adb shell dumpsys location` (`mac/last_location.py`).
-- Das Handy braucht im Router eine feste IP (DHCP-Reservierung), sonst passt
-  `PHONE_WIFI` irgendwann nicht mehr.
-- Status: `bash ~/Library/IntruderWatch/intruder-health.sh --report` zeigt
-  „Handy: erreichbar (…)“. Tests: `bash tests/test-phone-lib.sh`.
+- During an alarm: Wi-Fi connected → use it; port open → reconnect; otherwise USB if
+  the cable is plugged in; otherwise Mac photo only. The port check times out after 2 s.
+- After a phone reboot, Wi-Fi adb is off. The health check (every 30 min) turns it
+  back on via `adb tcpip 5555` as soon as the cable is plugged in, and reconnects.
+  This never happens during an alarm (it would briefly drop USB).
+- Selfie: `scrcpy --video-source=camera --camera-id=1 --force-adb-forward` records
+  3 s of video; the last frame becomes `selfie.jpg`, the video is kept as
+  `selfie.mkv`. Works with the phone locked and shows nothing on it. Up to 2 attempts
+  (the first start after a pause sometimes fails); scrcpy output goes to
+  `scrcpy.log` in the alarm folder. Termux:API may not use the camera in the
+  background on Android 16. Camera ID in `PHONE_CAM_ID`. Depending on how the phone
+  is lying, the picture may be upside down.
+- Location: if Termux can't get one, the Mac reads the last known location via
+  `adb shell dumpsys location` (`mac/last_location.py`).
+- With Wi-Fi the phone needs a fixed IP in the router (DHCP reservation), otherwise
+  `PHONE_WIFI` will eventually be wrong.
+- Status: `bash ~/Library/IntruderWatch/intruder-health.sh --report` shows
+  "Handy: erreichbar (…)" (phone reachable). Tests: `bash tests/test-phone-lib.sh`.
 
-## Auslöse-Logik (Fehlalarme vermeiden)
+## Trigger logic (avoiding false alarms)
 
-Der Wächter zählt einen Fehlversuch **nur**, wenn beide Bedingungen gelten:
-1. **Bildschirm ist gesperrt** (`is_locked.py` via PyObjC). So lösen `sudo`-
-   Vertipper oder App-Passwort-Abfragen bei entsperrtem Mac **nicht** aus.
-2. **Der Mac ist nicht gerade aufgewacht** (Heartbeat-Datei; `WAKE_GRACE` Sek.).
-   Beim Aufwachen aus dem Sleep spült macOS gepufferte Auth-Fehlschläge nach.
-3. **Der Deckel ist offen und wurde vor mehr als `LID_GRACE` (2) Sek. aufgeklappt
-   bzw. der Mac ist vor mehr als 2 Sek. aufgewacht.** macOS schreibt eigene
-   Fehlschläge nur bei zugeklapptem Deckel – die werden ignoriert.
-   Beim Zuklappen loggt macOS selbst 2–3 Auth-Fehlschläge – früher löste das
-   Foto + Herunterfahren bei jedem Zuklappen aus.
-4. **Das Display ist an.** Beim Sperren / Display-Aus schreibt macOS eigene
-   Fehlschläge, auch bei offenem Deckel. Bei ausgeschaltetem Display kann niemand
-   tippen. `mac/display-watch.py` (läuft als Kind des Wächters) prüft das jede
-   Sekunde; ein Display-Wechsel startet auch die `LID_GRACE`-Schonfrist.
-5. **Kein Doppel-Eintrag:** Einträge mit weniger als `BURST` (2) Sek. Abstand –
-   gemessen an der Zeit **im Log**, nicht der Verarbeitung – zählen als ein Versuch.
+The watcher counts a failed attempt **only** if all of these hold:
+1. **The screen is locked** (`is_locked.py` via PyObjC). So `sudo` typos or app
+   password prompts on an unlocked Mac do **not** trigger.
+2. **The Mac has not just woken up** (heartbeat file; `WAKE_GRACE` s). On wake,
+   macOS flushes buffered auth failures.
+3. **The lid is open and was opened more than `LID_GRACE` (2) s ago, or the Mac woke
+   more than 2 s ago.** macOS writes its own failures only with the lid closed –
+   those are ignored. On closing the lid macOS itself logs 2–3 auth failures –
+   this used to trigger photo + shutdown on every lid close.
+4. **The display is on.** On locking / display off, macOS writes its own failures
+   even with the lid open. Nobody can type with the display off.
+   `mac/display-watch.py` (a child of the watcher) checks this every second; a
+   display change also starts the `LID_GRACE` grace period.
+5. **No duplicate entry:** entries less than `BURST` (2) s apart – measured by the
+   time **in the log**, not processing time – count as one attempt.
 
-Liefert `is_locked.py` kein Ergebnis (z. B. pyobjc fehlt nach Python-Update),
-schreibt der Wächter einen FEHLER ins Log und schickt höchstens stündlich eine
-Telegram-Warnung – statt still nie mehr auszulösen.
+If `is_locked.py` returns nothing (e.g. pyobjc missing after a Python update), the
+watcher logs an error and sends a Telegram warning at most hourly – instead of
+silently never triggering again.
 
-Die Logik steckt testbar in `mac/watch-lib.sh`; Tests: `bash tests/test-watch-lib.sh`.
+The logic lives, testable, in `mac/watch-lib.sh`; tests: `bash tests/test-watch-lib.sh`.
 
-Erst ab `THRESH` echten Sperrbildschirm-Fehlversuchen in `WINDOW` Sekunden wird
-ausgelöst, danach `COOLDOWN` Sekunden Ruhe. Werte oben in `mac/intruder-watch.sh`.
+It only triggers after `THRESH` real lock-screen failures within `WINDOW` seconds,
+then stays quiet for `COOLDOWN` seconds. Values at the top of `mac/intruder-watch.sh`.
 
-**Nach Neustart:** Der Dienst startet automatisch, sobald du dich anmeldest
-(`RunAtLoad`/`KeepAlive`). Am reinen Login-Bildschirm vor der ersten Anmeldung
-läuft er nicht – das ist eine macOS-Grenze für Benutzerdienste.
+**After a restart:** the service starts automatically once you log in
+(`RunAtLoad`/`KeepAlive`). It does not run at the login window before the first
+login – a macOS limit for per-user services.
 
 ## Tests
 
@@ -230,18 +227,18 @@ läuft er nicht – das ist eine macOS-Grenze für Benutzerdienste.
 for t in tests/test-*.sh; do bash "$t"; done
 ```
 
-Die Tests ersetzen adb, Telegram, Uhr und Popups durch Attrappen – kein Handy,
-kein Netz und keine Zugangsdaten nötig.
+The tests replace adb, Telegram, the clock and popups with fakes – no phone, no
+network and no credentials needed.
 
-## Rechtliches
+## Legal
 
-IntruderWatch ist ein Diebstahlschutz für **eigene** Geräte. Es fotografiert die
-Person, die am Mac falsche Passwörter eingibt, und erfasst Standortdaten.
+IntruderWatch is theft protection for **your own** devices. It photographs the
+person entering wrong passwords on the Mac and records location data.
 
-- Nur auf Geräten einsetzen, die dir gehören.
-- Wer den Mac sonst noch benutzt (Familie, Mitbewohner, Kollegen), muss davon
-  wissen. Heimliche Aufnahmen anderer Personen können je nach Land verboten sein
-  (in Deutschland u. a. Recht am eigenen Bild, § 201a StGB, DSGVO).
-- Fotos nur zur Aufklärung eines Diebstahls nutzen (z. B. für die Polizei),
-  nicht veröffentlichen.
-- Keine Gewähr: Software ohne Garantie, Nutzung auf eigenes Risiko (siehe LICENSE).
+- Only use it on devices you own.
+- Anyone else who uses the Mac (family, flatmates, colleagues) must know about it.
+  Covert recordings of other people may be illegal depending on your country
+  (in Germany e.g. the right to one's own image, § 201a StGB, GDPR).
+- Use the photos only to investigate a theft (e.g. for the police); do not publish them.
+- No warranty: the software comes without any guarantee, use at your own risk
+  (see LICENSE).
