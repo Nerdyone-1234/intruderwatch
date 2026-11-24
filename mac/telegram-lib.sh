@@ -1,28 +1,27 @@
 #!/bin/bash
-# Telegram-Versand mit Warteschlange: Klappt sendPhoto/sendMessage nur
-# VORUEBERGEHEND nicht (WLAN blockiert Telegram, offline, 429/5xx), wird der
-# Eintrag in TG_QUEUE abgelegt und spaeter von tg_flush_queue gesendet
-# (intruder-watch.sh ruft das regelmaessig auf). DAUERHAFTE Ablehnungen (4xx,
-# kein JPEG) werden nicht eingereiht bzw. nach TG_QUEUE/.failed verschoben,
-# damit sie die Warteschlange nicht verstopfen.
-# Token/Chat werden NIE in der Queue gespeichert, sondern beim Senden frisch gelesen.
+# Telegram sending with a queue: if sendPhoto/sendMessage fails only TEMPORARILY
+# (Wi-Fi blocks Telegram, offline, 429/5xx), the entry is stored in TG_QUEUE and
+# sent later by tg_flush_queue (intruder-watch.sh calls it regularly). PERMANENT
+# rejections (4xx, not a JPEG) are not queued or are moved to TG_QUEUE/.failed,
+# so they don't clog the queue.
+# Token/chat are NEVER stored in the queue; they are read fresh when sending.
 #
-# Rueckgabewerte der Sende-Funktionen: 0 = gesendet, 1 = voruebergehend, 2 = dauerhaft.
+# Return values of the send functions: 0 = sent, 1 = temporary, 2 = permanent.
 
 IW_CONFIG="${IW_CONFIG:-$HOME/Library/IntruderWatch/config.sh}"
 # shellcheck source=config.example.sh
 [ -f "$IW_CONFIG" ] && . "$IW_CONFIG"
-# JSON {"token": ..., "allowed_chat_id": ...}; Pfad in config.sh einstellbar.
+# JSON {"token": ..., "allowed_chat_id": ...}; path configurable in config.sh.
 TG_CONFIG="${TG_CONFIG:-$HOME/Library/IntruderWatch/telegram.json}"
 TG_QUEUE="${TG_QUEUE:-$HOME/Library/IntruderWatch/queue}"
 TG_TIMEOUT="${TG_TIMEOUT:-30}"
-TG_MAX_AGE_DAYS="${TG_MAX_AGE_DAYS:-30}"   # aeltere Eintraege verwerfen
-TG_LOCK_STALE="${TG_LOCK_STALE:-300}"      # Sperre aelter als das (s) gilt als verwaist
-TG_DELAY_TAG="⏳ Verspaetet gesendet (WLAN/Netz war blockiert)"
+TG_MAX_AGE_DAYS="${TG_MAX_AGE_DAYS:-30}"   # drop older entries
+TG_LOCK_STALE="${TG_LOCK_STALE:-300}"      # a lock older than this (s) is stale
+TG_DELAY_TAG="⏳ Sent late (Wi-Fi/network was blocked)"
 
 tg_log(){ declare -F log >/dev/null && log "$*"; return 0; }
 
-# Liest token und chat aus der Config. Ausgabe: "token chat" oder nichts.
+# Reads token and chat from the config. Prints "token chat" or nothing.
 tg_credentials(){
   [ -f "$TG_CONFIG" ] || return 1
   /usr/bin/python3 - "$TG_CONFIG" <<'PY' 2>/dev/null
@@ -33,8 +32,8 @@ if t and ch: print(t, ch)
 PY
 }
 
-# HTTP-Aufrufe an Telegram (in Tests ersetzbar).
-tg_post(){ # $1 token $2 chat $3 foto $4 text
+# HTTP calls to Telegram (replaceable in tests).
+tg_post(){ # $1 token $2 chat $3 photo $4 text
   curl -s -m "$TG_TIMEOUT" -F "chat_id=$2" -F "photo=@$3" --form-string "caption=$4" \
     "https://api.telegram.org/bot$1/sendPhoto"
 }
@@ -43,10 +42,10 @@ tg_post_text(){ # $1 token $2 chat $3 text
     "https://api.telegram.org/bot$1/sendMessage"
 }
 
-# Ist die Datei ein JPEG (Signatur FF D8 FF)? Schuetzt vor Fehlermeldungen als "Foto".
+# Is the file a JPEG (signature FF D8 FF)? Protects against error messages as "photo".
 tg_is_jpeg(){ [ -s "$1" ] && [ "$(head -c 3 "$1" | od -An -tx1 | tr -d ' \n')" = ffd8ff ]; }
 
-# Telegram-Antwort bewerten -> 0 ok, 2 dauerhaft (4xx ausser 429), sonst 1.
+# Classify the Telegram response -> 0 ok, 2 permanent (4xx except 429), else 1.
 tg_classify(){
   case "$1" in
     *'"ok":true'*) return 0;;
@@ -66,7 +65,7 @@ tg_send_text(){ # $1 text
   tg_classify "$resp"
 }
 
-tg_send_photo(){ # $1 foto $2 text
+tg_send_photo(){ # $1 photo $2 text
   local photo=$1 caption=$2 creds resp
   tg_is_jpeg "$photo" || return 2
   creds=$(tg_credentials) || return 1
@@ -77,8 +76,8 @@ tg_send_photo(){ # $1 foto $2 text
   tg_classify "$resp"
 }
 
-# Legt einen Eintrag ATOMAR an: erst in .tmp-* fertig schreiben, dann umbenennen.
-# So sieht tg_flush_queue nie einen halb geschriebenen Eintrag. $1 text  $2 foto (optional)
+# Creates an entry ATOMICALLY: write it completely in .tmp-* first, then rename.
+# So tg_flush_queue never sees a half-written entry. $1 text  $2 photo (optional)
 tg_enqueue(){
   local caption=$1 photo=$2 tmp
   mkdir -p "$TG_QUEUE" && chmod 700 "$TG_QUEUE" || return 1
@@ -88,41 +87,41 @@ tg_enqueue(){
     mv "$tmp" "$TG_QUEUE/$(date +%Y%m%d-%H%M%S)-$$-$RANDOM" || { rm -rf "$tmp"; return 1; }
 }
 
-# Foto senden; voruebergehender Fehler -> Queue. Exit 0 gesendet, 1 in Queue, 2 abgelehnt.
+# Send a photo; temporary error -> queue. Exit 0 sent, 1 queued, 2 rejected.
 tg_send_or_queue(){
   tg_send_photo "$1" "$2"; local rc=$?
   case $rc in
     0) return 0;;
-    2) tg_log "telegram: Foto dauerhaft abgelehnt (kein JPEG/4xx) – nicht eingereiht: $1"; return 2;;
+    2) tg_log "telegram: photo permanently rejected (not a JPEG/4xx) - not queued: $1"; return 2;;
   esac
-  tg_enqueue "$2" "$1" && tg_log "telegram blockiert/fehlgeschlagen -> in Warteschlange"
+  tg_enqueue "$2" "$1" && tg_log "telegram blocked/failed -> queued"
   return 1
 }
 
-# Text senden; voruebergehender Fehler -> Queue. Exit wie tg_send_or_queue.
+# Send text; temporary error -> queue. Exit codes like tg_send_or_queue.
 tg_text_or_queue(){
   tg_send_text "$1"; local rc=$?
   case $rc in
     0) return 0;;
-    2) tg_log "telegram: Text dauerhaft abgelehnt (4xx)"; return 2;;
+    2) tg_log "telegram: text permanently rejected (4xx)"; return 2;;
   esac
-  tg_enqueue "$1" && tg_log "telegram-text -> in Warteschlange"
+  tg_enqueue "$1" && tg_log "telegram text -> queued"
   return 1
 }
 
-# Sperre holen; eine verwaiste (aelter als TG_LOCK_STALE) wird uebernommen.
+# Take the lock; a stale one (older than TG_LOCK_STALE) is taken over.
 tg_lock(){
   local lock="$TG_QUEUE/.lock" age
   mkdir "$lock" 2>/dev/null && return 0
   age=$(( $(date +%s) - $(stat -f %m "$lock" 2>/dev/null || date +%s) ))
   [ "$age" -gt "$TG_LOCK_STALE" ] || return 1
-  tg_log "warteschlange: verwaiste Sperre ($age s) entfernt"
+  tg_log "queue: removed stale lock ($age s)"
   rmdir "$lock" 2>/dev/null; mkdir "$lock" 2>/dev/null
 }
 
-# Sendet alle fertigen Eintraege (aelteste zuerst). Voruebergehender Fehler ->
-# abbrechen (Netz weg, sonst laeuft jeder Eintrag in den Timeout). Dauerhafter
-# Fehler -> nach .failed verschieben und weitermachen.
+# Sends all finished entries (oldest first). Temporary error -> stop (network
+# gone, otherwise every entry runs into the timeout). Permanent error -> move
+# to .failed and continue.
 tg_flush_queue(){
   local entry text rc sent=0
   [ -d "$TG_QUEUE" ] || return 0
@@ -141,11 +140,11 @@ $(cat "$entry/caption.txt" 2>/dev/null)"
     case $rc in
       0) rm -rf "$entry"; sent=$((sent+1));;
       2) mkdir -p "$TG_QUEUE/.failed" && mv "$entry" "$TG_QUEUE/.failed/"
-         tg_log "warteschlange: Eintrag dauerhaft abgelehnt -> .failed/$(basename "$entry")";;
+         tg_log "queue: entry permanently rejected -> .failed/$(basename "$entry")";;
       *) break;;
     esac
   done
   rmdir "$TG_QUEUE/.lock" 2>/dev/null
-  [ $sent -gt 0 ] && tg_log "warteschlange: $sent Eintrag(e) nachtraeglich gesendet"
+  [ $sent -gt 0 ] && tg_log "queue: $sent entry/entries sent late"
   return 0
 }

@@ -1,10 +1,10 @@
 #!/bin/bash
-# Testbare Hilfsfunktionen fuer intruder-health.sh.
+# Testable helper functions for intruder-health.sh.
 
-HEALTH_REPEAT="${HEALTH_REPEAT:-21600}"   # gleiche Warnung hoechstens alle 6 h
+HEALTH_REPEAT="${HEALTH_REPEAT:-21600}"   # same warning at most every 6 h
 
-# Soll eine Warnung gesendet werden? $1 Zustandsdatei  $2 Meldung ("" = alles ok)  $3 jetzt
-# Neue/andere Meldung -> sofort; gleiche -> erst nach HEALTH_REPEAT; ok -> Zustand loeschen.
+# Should a warning be sent? $1 state file  $2 message ("" = all ok)  $3 now
+# New/different message -> right away; same -> only after HEALTH_REPEAT; ok -> clear state.
 should_alert(){
   local state=$1 msg=$2 now=$3 last_msg last_at
   if [ -z "$msg" ]; then rm -f "$state"; return 1; fi
@@ -16,19 +16,19 @@ should_alert(){
   return 0
 }
 
-# Anzahl wartender Eintraege, die aelter als $2 Minuten sind (versteckte ignoriert).
+# Number of queued entries older than $2 minutes (hidden ones ignored).
 queue_stuck(){
   [ -d "$1" ] || { echo 0; return; }
   find "$1" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -mmin +"$2" | wc -l | tr -d ' '
 }
 
-# Anzahl dauerhaft abgelehnter Eintraege.
+# Number of permanently rejected entries.
 queue_failed(){
   [ -d "$1/.failed" ] || { echo 0; return; }
   find "$1/.failed" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' '
 }
 
-# Heartbeat veraltet? $1 Datei  $2 jetzt  $3 max. Alter (s). Exit 0 = veraltet/fehlt.
+# Heartbeat stale? $1 file  $2 now  $3 max age (s). Exit 0 = stale/missing.
 hb_stale(){
   local hb
   hb=$(cat "$1" 2>/dev/null) || return 0

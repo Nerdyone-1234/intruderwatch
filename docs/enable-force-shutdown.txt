@@ -1,8 +1,8 @@
-# Passwortfreies Herunterfahren fuer IntruderWatch einrichten.
-# EINMALIG im Terminal ausfuehren (fragt dein Admin-Passwort):
+# Set up password-less shutdown for IntruderWatch.
+# Run ONCE in Terminal (asks for your admin password):
 
 echo "$(whoami) ALL=(root) NOPASSWD: /sbin/shutdown" | sudo tee /etc/sudoers.d/intruderwatch-shutdown >/dev/null && sudo chmod 440 /etc/sudoers.d/intruderwatch-shutdown && echo OK
 
-# Pruefen danach:
-sudo -n /sbin/shutdown -h +60   # plant Shutdown in 60 min OHNE Passwort -> dann abbrechen:
-sudo killall shutdown   # (macOS kennt kein 'shutdown -c')
+# Check afterwards:
+sudo -n /sbin/shutdown -h +60   # schedules a shutdown in 60 min WITHOUT a password -> then cancel:
+sudo killall shutdown   # (macOS has no 'shutdown -c')

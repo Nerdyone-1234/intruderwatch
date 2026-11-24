@@ -1,22 +1,22 @@
 #!/bin/bash
-# Handy-Verbindung per adb (von intruder-snap.sh und intruder-health.sh benutzt).
+# Phone connection via adb (used by intruder-snap.sh and intruder-health.sh).
 #
-# Einstellungen in ~/Library/IntruderWatch/config.sh (Vorlage mac/config.example.sh):
-#   PHONE_WIFI = IP:Port fuer WLAN-adb (per `adb tcpip 5555`). Leer = nur Kabel (USB).
-#   PHONE_USB  = USB-Seriennummer. Leer = erstes per USB verbundenes Geraet.
-# Mit PHONE_WIFI wird zuerst WLAN versucht, USB ist dann Notfall.
+# Settings in ~/Library/IntruderWatch/config.sh (template mac/config.example.sh):
+#   PHONE_WIFI = IP:port for Wi-Fi adb (via `adb tcpip 5555`). Empty = cable only (USB).
+#   PHONE_USB  = USB serial. Empty = first device connected via USB.
+# With PHONE_WIFI, Wi-Fi is tried first and USB is the fallback.
 #
-#   phone_target         -> gibt das adb-Ziel aus (WLAN zuerst, sonst USB).
-#                           Exit 0 = Handy erreichbar, 1 = nicht erreichbar.
-#                           Im Alarm wird NIE `adb tcpip` ausgefuehrt (startet adbd
-#                           neu und wuerde die USB-Verbindung kurz kappen).
-#   phone_keep_wireless  -> fuer den Gesundheits-Check: haelt WLAN-adb am Leben.
-#                           Nach einem Handy-Neustart ist der WLAN-Modus aus; steckt
-#                           dann das Kabel, wird er per USB wieder eingeschaltet.
-#                           Ausgabe: ok | verbunden | per USB eingeschaltet | nicht erreichbar
-#   phone_selfie Z F V   -> Foto der Frontkamera per scrcpy (Video V, letztes Bild -> F).
+#   phone_target         -> prints the adb target (Wi-Fi first, else USB).
+#                           Exit 0 = phone reachable, 1 = unreachable.
+#                           NEVER runs `adb tcpip` during an alarm (it restarts adbd
+#                           and would briefly drop the USB connection).
+#   phone_keep_wireless  -> for the health check: keeps Wi-Fi adb alive.
+#                           After a phone reboot Wi-Fi mode is off; if the cable is
+#                           plugged in, it is turned back on via USB.
+#                           Output: ok | connected | enabled via USB | unreachable
+#   phone_selfie T F V   -> front camera photo via scrcpy (video V, last frame -> F).
 #
-# Die ph_*-Funktionen sind in Tests ersetzbar.
+# The ph_* functions can be replaced in tests.
 
 IW_CONFIG="${IW_CONFIG:-$HOME/Library/IntruderWatch/config.sh}"
 # shellcheck source=config.example.sh
@@ -24,34 +24,34 @@ IW_CONFIG="${IW_CONFIG:-$HOME/Library/IntruderWatch/config.sh}"
 PHONE_WIFI="${PHONE_WIFI:-}"
 PHONE_USB="${PHONE_USB:-}"
 PHONE_PORT="${PHONE_PORT:-5555}"
-PH_WAIT_TRIES="${PH_WAIT_TRIES:-6}"   # x 0,5 s auf "device" nach dem Verbinden warten
-# Selfie per scrcpy (Kamera ueber adb, ohne Termux:API – Android 16 blockiert dort die
-# Kamera im Hintergrund). Funktioniert auch bei gesperrtem Handy, zeigt nichts an.
-PHONE_CAM_ID="${PHONE_CAM_ID:-1}"          # `scrcpy --list-cameras`; meist 1 = Frontkamera
-PHONE_CAM_SECONDS="${PHONE_CAM_SECONDS:-3}" # Videolaenge; letztes Bild = Foto (Belichtung eingeschwungen)
-PHONE_CAM_MAX_WAIT="${PHONE_CAM_MAX_WAIT:-20}" # scrcpy haengt? nach so vielen s abbrechen
-# Der erste scrcpy-Start nach einer Pause scheitert manchmal ("Server connection failed")
-# -> so viele Versuche. Meldungen von scrcpy landen in PHONE_CAM_LOG (snap: Alarm-Ordner).
+PH_WAIT_TRIES="${PH_WAIT_TRIES:-6}"   # x 0.5 s waiting for "device" after connecting
+# Selfie via scrcpy (camera over adb, without Termux:API – Android 16 blocks the
+# camera there in the background). Works with the phone locked and shows nothing.
+PHONE_CAM_ID="${PHONE_CAM_ID:-1}"          # `scrcpy --list-cameras`; usually 1 = front camera
+PHONE_CAM_SECONDS="${PHONE_CAM_SECONDS:-3}" # video length; last frame = photo (exposure settled)
+PHONE_CAM_MAX_WAIT="${PHONE_CAM_MAX_WAIT:-20}" # scrcpy hangs? give up after this many s
+# The first scrcpy start after a pause sometimes fails ("Server connection failed")
+# -> this many attempts. scrcpy output goes to PHONE_CAM_LOG (snap: alarm folder).
 PHONE_CAM_TRIES="${PHONE_CAM_TRIES:-2}"
 PHONE_CAM_LOG="${PHONE_CAM_LOG:-/dev/null}"
 
-# Zustand laut `adb devices` (device | offline | unauthorized | leer = nicht gelistet).
+# State according to `adb devices` (device | offline | unauthorized | empty = not listed).
 ph_state(){ adb devices 2>/dev/null | awk -v t="$1" '$1 == t { print $2 }'; }
-# Erstes per USB verbundenes Geraet (Seriennummer ohne ":" = kein WLAN-Ziel).
+# First device connected via USB (serial without ":" = not a Wi-Fi target).
 ph_first_usb(){ adb devices 2>/dev/null | awk 'NR > 1 && $2 == "device" && $1 !~ /:/ { print $1; exit }'; }
-# Port-Check mit 2 s Zeitlimit, damit ein abwesendes Handy den Alarm nicht aufhaelt.
+# Port check with a 2 s limit, so an absent phone doesn't delay the alarm.
 ph_port_open(){ nc -z -G 2 "$1" "$2" >/dev/null 2>&1; }
 ph_connect(){ adb connect "$1" >/dev/null 2>&1; }
 ph_disconnect(){ adb disconnect "$1" >/dev/null 2>&1; }
 ph_tcpip(){ adb -s "$1" tcpip "$2" >/dev/null 2>&1; }
-ph_settle(){ sleep 3; }   # nach `adb tcpip` braucht adbd auf dem Handy einen Moment
+ph_settle(){ sleep 3; }   # after `adb tcpip`, adbd on the phone needs a moment
 ph_nap(){ sleep 0.5; }
 
-# Kamera-Video aufnehmen ($1 = adb-Ziel, $2 = Video). Mit Zeitlimit-Waechter,
-# damit ein haengendes scrcpy den Alarm nicht blockiert.
+# Record camera video ($1 = adb target, $2 = video). With a time-limit watchdog,
+# so a hanging scrcpy doesn't block the alarm.
 ph_scrcpy_record(){
-  command -v scrcpy >/dev/null || { echo "scrcpy nicht gefunden" >> "$PHONE_CAM_LOG"; return 1; }
-  # --force-adb-forward: Tunnel Mac -> Handy (adb forward) statt adb reverse.
+  command -v scrcpy >/dev/null || { echo "scrcpy not found" >> "$PHONE_CAM_LOG"; return 1; }
+  # --force-adb-forward: tunnel Mac -> phone (adb forward) instead of adb reverse.
   scrcpy -s "$1" --video-source=camera --camera-id="$PHONE_CAM_ID" --max-size=1920 \
     --no-audio --no-playback --no-window --force-adb-forward \
     --record="$2" --time-limit="$PHONE_CAM_SECONDS" \
@@ -64,13 +64,13 @@ ph_scrcpy_record(){
   kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
   return 1
 }
-# Letztes Bild des Videos als JPEG ($1 = Video, $2 = Foto).
+# Last frame of the video as JPEG ($1 = video, $2 = photo).
 ph_last_frame(){ ffmpeg -loglevel error -y -sseof -0.5 -i "$1" -frames:v 1 -q:v 2 "$2" </dev/null >/dev/null 2>&1; }
 ph_is_jpeg(){ [ -s "$1" ] && [ "$(head -c 3 "$1" | od -An -tx1 | tr -d ' \n')" = ffd8ff ]; }
-ph_cam_pause(){ sleep 1; }   # zwischen zwei scrcpy-Versuchen
+ph_cam_pause(){ sleep 1; }   # between two scrcpy attempts
 
-# phone_selfie <adb-ziel> <foto.jpg> <video.mkv>: Exit 0 = JPEG da (Video bleibt als Beweis).
-# Bis zu PHONE_CAM_TRIES scrcpy-Versuche; ffmpeg nur, wenn ein Video da ist.
+# phone_selfie <adb-target> <photo.jpg> <video.mkv>: exit 0 = JPEG exists (video kept as evidence).
+# Up to PHONE_CAM_TRIES scrcpy attempts; ffmpeg only if there is a video.
 phone_selfie(){
   local try recorded=1
   for ((try = 1; try <= PHONE_CAM_TRIES; try++)); do
@@ -97,18 +97,18 @@ _ph_wait_device(){
   return 1
 }
 
-# WLAN verbinden, falls der Port offen ist. Exit 0 = WLAN-Ziel ist "device".
+# Connect Wi-Fi if the port is open. Exit 0 = Wi-Fi target is "device".
 _ph_wifi_up(){
-  [ -n "$PHONE_WIFI" ] || return 1               # Nur-Kabel-Modus
+  [ -n "$PHONE_WIFI" ] || return 1               # cable-only mode
   local st; st=$(ph_state "$PHONE_WIFI")
   [ "$st" = device ] && return 0
   ph_port_open "$(_ph_host)" "$(_ph_port)" || return 1
-  [ -n "$st" ] && ph_disconnect "$PHONE_WIFI"   # veralteter Eintrag (offline o. ae.)
+  [ -n "$st" ] && ph_disconnect "$PHONE_WIFI"   # stale entry (offline etc.)
   ph_connect "$PHONE_WIFI"
   _ph_wait_device "$PHONE_WIFI"
 }
 
-# USB-Seriennummer: PHONE_USB oder (leer) das erste USB-Geraet. Exit 0 = verbunden.
+# USB serial: PHONE_USB or (empty) the first USB device. Exit 0 = connected.
 _ph_usb(){
   local s="${PHONE_USB:-$(ph_first_usb)}"
   [ -n "$s" ] && [ "$(ph_state "$s")" = device ] && echo "$s"
@@ -123,16 +123,16 @@ phone_target(){
 
 phone_keep_wireless(){
   local usb
-  if [ -z "$PHONE_WIFI" ]; then                  # Nur-Kabel-Modus: nichts am Leben zu halten
+  if [ -z "$PHONE_WIFI" ]; then                  # cable-only mode: nothing to keep alive
     if _ph_usb >/dev/null; then echo ok; return 0; fi
-    echo "nicht erreichbar"; return 1
+    echo "unreachable"; return 1
   fi
   if [ "$(ph_state "$PHONE_WIFI")" = device ]; then echo ok; return 0; fi
-  if _ph_wifi_up; then echo verbunden; return 0; fi
+  if _ph_wifi_up; then echo connected; return 0; fi
   if usb=$(_ph_usb); then
     ph_tcpip "$usb" "$(_ph_port)"
     ph_settle
-    if _ph_wifi_up; then echo "per USB eingeschaltet"; return 0; fi
+    if _ph_wifi_up; then echo "enabled via USB"; return 0; fi
   fi
-  echo "nicht erreichbar"; return 1
+  echo "unreachable"; return 1
 }

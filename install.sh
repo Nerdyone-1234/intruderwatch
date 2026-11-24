@@ -10,21 +10,21 @@ chmod 755 "$DST"/*.sh
 sed "s#__HOME__#$HOME#g" mac/de.intruderwatch.plist.template > "$HOME/Library/LaunchAgents/de.intruderwatch.plist"
 launchctl bootout "gui/$(id -u)/de.intruderwatch" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/de.intruderwatch.plist"
-# Gesundheits-Check alle 30 min (startet den Waechter bei Bedarf neu, warnt per Telegram)
+# Health check every 30 min (restarts the watcher if needed, warns via Telegram)
 sed "s#__HOME__#$HOME#g" mac/de.intruderwatch.health.plist.template > "$HOME/Library/LaunchAgents/de.intruderwatch.health.plist"
 launchctl bootout "gui/$(id -u)/de.intruderwatch.health" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/de.intruderwatch.health.plist"
 if [ ! -f "$DST/config.sh" ]; then
   cp mac/config.example.sh "$DST/config.sh"
-  echo "Einstellungen angelegt: $DST/config.sh  (Handy, Telegram-Datei anpassen)"
+  echo "Settings created: $DST/config.sh  (edit phone and Telegram file)"
 fi
 chmod 600 "$DST/config.sh"
 if [ ! -f "$DST/secret.txt" ]; then
-  read -r -p "Antwort fuer die Geheimfrage (bricht das Herunterfahren ab): " ANS
+  read -r -s -p "Secret answer (cancels the shutdown): " ANS; echo
   [ -n "$ANS" ] && printf "%s\n" "$ANS" > "$DST/secret.txt"
 fi
 [ -f "$DST/secret.txt" ] && chmod 600 "$DST/secret.txt"
-echo "IntruderWatch installiert und gestartet."
-echo "Handy-Skript phone/snap.sh muss separat in Termux (~/bin/snap.sh) liegen."
+echo "IntruderWatch installed and started."
+echo "The phone script phone/snap.sh must be placed separately in Termux (~/bin/snap.sh)."
 command -v scrcpy >/dev/null && command -v ffmpeg >/dev/null \
-  || echo "WARNUNG: scrcpy/ffmpeg fehlen -> kein Handy-Selfie (brew install scrcpy ffmpeg)"
+  || echo "WARNING: scrcpy/ffmpeg missing -> no phone selfie (brew install scrcpy ffmpeg)"

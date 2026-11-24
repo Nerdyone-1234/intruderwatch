@@ -1,12 +1,12 @@
-"""Beobachtet, ob das Display an oder aus ist (fuer intruder-watch.sh).
+"""Watches whether the display is on or off (for intruder-watch.sh).
 
-Laeuft dauerhaft als Kind des Waechters und prueft jede Sekunde. Schreibt:
-  <dir>/.display_state   "awake" oder "asleep"
-  <dir>/.lid_closed_at   Zeitpunkt jedes Display-Wechsels (gemeinsame Markierung
-                         mit Deckel-Bewegungen -> Schonfrist LID_GRACE)
-Grund: Beim Sperren / Display-Aus schreibt macOS selbst Fehlschlaege, auch bei
-offenem Deckel (Vorfall 2026-11-23 16:26). Bei Display aus kann niemand tippen.
-Beendet sich, wenn der Waechter (Elternprozess) weg ist.
+Runs permanently as a child of the watcher and checks every second. Writes:
+  <dir>/.display_state   "awake" or "asleep"
+  <dir>/.lid_closed_at   time of every display change (shared mark with lid
+                         movements -> grace period LID_GRACE)
+Reason: on locking / display off, macOS itself writes auth failures, even with the
+lid open (incident 2026-11-23 16:26). With the display off nobody can type.
+Exits when the watcher (parent process) is gone.
 """
 import os
 import sys
@@ -14,7 +14,7 @@ import time
 
 import Quartz
 
-CHECK_EVERY = 1  # Sekunden
+CHECK_EVERY = 1  # seconds
 
 
 def display_state():
@@ -45,5 +45,5 @@ def main(state_dir):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2 or not os.path.isdir(sys.argv[1]):
-        sys.exit("Benutzung: display-watch.py <IntruderWatch-Verzeichnis>")
+        sys.exit("Usage: display-watch.py <IntruderWatch directory>")
     main(sys.argv[1])

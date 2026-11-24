@@ -1,18 +1,18 @@
 #!/bin/bash
-# Baut zwei anklickbare Apps auf den Schreibtisch:
-#   "IntruderWatch AUS.app" – schaltet alles ab (+ Mitteilung + Telegram)
-#   "IntruderWatch AN.app"  – schaltet wieder ein
+# Builds two clickable apps on the desktop:
+#   "IntruderWatch OFF.app" – turns everything off (+ notification + Telegram)
+#   "IntruderWatch ON.app"  – turns it back on
 set -e
 DIR="$HOME/Library/IntruderWatch"
 DEST="${1:-$HOME/Desktop}"
-build(){ # $1 Name  $2 Argument
+build(){ # $1 name  $2 argument
   local app="$DEST/$1.app"
   rm -rf "$app"
-  # try: ein Fehler soll keinen AppleScript-Dialog oeffnen (Mitteilung kommt vom Skript)
+  # try: an error must not open an AppleScript dialog (the script sends a notification)
   osacompile -o "$app" -e "try" \
     -e "do shell script \"/bin/bash \" & quoted form of \"$DIR/intruderwatch-switch.sh\" & \" $2\"" \
     -e "end try"
-  echo "gebaut: $app"
+  echo "built: $app"
 }
-build "IntruderWatch AUS" off
-build "IntruderWatch AN" on
+build "IntruderWatch OFF" off
+build "IntruderWatch ON" on

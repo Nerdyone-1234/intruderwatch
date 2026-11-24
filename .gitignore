@@ -1,9 +1,9 @@
-# Aufgenommene Beweisfotos / Metadaten NIE committen (Gesichter, Standort)
+# NEVER commit evidence photos / metadata (faces, location)
 Pictures/
 *.jpg
 *.jpeg
 *.png
-# Laufzeit-Logs
+# Runtime logs
 *.log
 *.err
 snap.done
@@ -11,8 +11,8 @@ secret.txt
 .DS_Store
 __pycache__/
 *.pyc
-# Eigene Einstellungen / Zugangsdaten (nie ins Repo)
+# Your own settings / credentials (never in the repo)
 config.sh
 telegram.json
-# Handy-Selfie-Videos
+# Phone selfie videos
 *.mkv

@@ -1,19 +1,19 @@
 #!/bin/bash
-# Abbruch des Herunterfahrens nach einem Alarm (von intruder-snap.sh benutzt).
+# Cancelling the shutdown after an alarm (used by intruder-snap.sh).
 #
-# Ablauf:
-#   1. Mac gesperrt: warten, bis er mit dem richtigen Passwort entsperrt wird
-#      (max. ABORT_LOCK_TIMEOUT s). Deckel zu oder Display aus -> abbrechen
-#      (niemand am Mac; schuetzt vor Fehlalarmen). Timeout -> herunterfahren.
-#   2. Mac entsperrt: Popup (ohne Fragetext, verdeckte Eingabe) fragt die
-#      Geheimantwort aus SECRET_FILE ab. Richtig -> abbrechen. Falsch -> erneut
-#      fragen. Keine richtige Antwort binnen ABORT_ANSWER_TIMEOUT s -> herunterfahren.
-#   Ohne SECRET_FILE reicht das Entsperren.
-# Das Popup erscheint erst NACH dem Entsperren – auf dem Sperrbildschirm waere es
-# unsichtbar (macOS zeigt keine Fenster ueber dem Sperrbildschirm).
+# Flow:
+#   1. Mac locked: wait until it is unlocked with the correct password
+#      (max. ABORT_LOCK_TIMEOUT s). Lid closed or display off -> cancel
+#      (nobody at the Mac; protects against false alarms). Timeout -> shut down.
+#   2. Mac unlocked: a popup (no question text, hidden input) asks for the
+#      secret answer from SECRET_FILE. Correct -> cancel. Wrong -> ask again.
+#      No correct answer within ABORT_ANSWER_TIMEOUT s -> shut down.
+#   Without SECRET_FILE, unlocking is enough.
+# The popup only appears AFTER unlocking – on the lock screen it would be
+# invisible (macOS shows no windows above the lock screen).
 #
-# wait_for_abort: Exit 0 = NICHT herunterfahren (Grund auf stdout), 1 = herunterfahren.
-# Die ab_*-Funktionen sind in Tests ersetzbar.
+# wait_for_abort: exit 0 = do NOT shut down (reason on stdout), 1 = shut down.
+# The ab_* functions can be replaced in tests.
 
 ABORT_LOCK_TIMEOUT="${ABORT_LOCK_TIMEOUT:-60}"
 ABORT_ANSWER_TIMEOUT="${ABORT_ANSWER_TIMEOUT:-60}"
@@ -27,7 +27,7 @@ ab_locked(){ [ "$("$AB_PY" "$AB_DIR/is_locked.py" 2>/dev/null)" != unlocked ]; }
 ab_lid_closed(){ ioreg -r -k AppleClamshellState -d 1 2>/dev/null | grep -q '"AppleClamshellState" = Yes'; }
 ab_display_off(){ [ "$(cat "$AB_DIR/.display_state" 2>/dev/null)" = asleep ]; }
 
-# Zeigt das Popup bis zu $1 Sekunden; gibt die Eingabe aus (leer bei Timeout).
+# Shows the popup for up to $1 seconds; prints the input (empty on timeout).
 ab_ask(){
   osascript 2>/dev/null <<OSA
 try
@@ -48,18 +48,18 @@ wait_for_abort(){
 
   deadline=$(( $(ab_now) + ABORT_LOCK_TIMEOUT ))
   while ab_locked; do
-    if ab_lid_closed; then echo "Deckel zu"; return 0; fi
-    if ab_display_off; then echo "Display aus"; return 0; fi
+    if ab_lid_closed; then echo "lid closed"; return 0; fi
+    if ab_display_off; then echo "display off"; return 0; fi
     [ "$(ab_now)" -ge "$deadline" ] && return 1
     ab_sleep
   done
 
-  if [ -z "$want" ]; then echo "entsperrt (keine Geheimantwort eingerichtet)"; return 0; fi
+  if [ -z "$want" ]; then echo "unlocked (no secret answer set up)"; return 0; fi
 
   deadline=$(( $(ab_now) + ABORT_ANSWER_TIMEOUT ))
   while left=$(( deadline - $(ab_now) )); [ "$left" -gt 0 ]; do
     ans=$(ab_norm "$(ab_ask "$left")")
-    if [ -n "$ans" ] && [ "$ans" = "$want" ]; then echo "Geheimantwort"; return 0; fi
+    if [ -n "$ans" ] && [ "$ans" = "$want" ]; then echo "secret answer"; return 0; fi
   done
   return 1
 }

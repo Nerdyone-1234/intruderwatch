@@ -1,19 +1,19 @@
 #!/bin/bash
-# Tests fuer mac/abort-lib.sh – ausfuehren: bash tests/test-abort-lib.sh
-# Ablauf: gesperrt -> warten bis entsperrt (oder Deckel zu / Display aus / Timeout);
-# entsperrt -> Popup, richtige Geheimantwort stoppt das Herunterfahren.
-# Uhr, Sperre, Deckel, Display und Popup sind Attrappen (kein echtes Fenster).
+# Tests for mac/abort-lib.sh – run: bash tests/test-abort-lib.sh
+# Flow: locked -> wait until unlocked (or lid closed / display off / timeout);
+# unlocked -> popup, the correct secret answer stops the shutdown.
+# Clock, lock, lid, display and popup are fakes (no real window).
 cd "$(dirname "$0")/.." || exit 1
 . mac/abort-lib.sh
 fail=0; pass=0
-check(){ if [ "$2" = "$3" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: $1 (erwartet '$2', bekam '$3')"; fi; }
+check(){ if [ "$2" = "$3" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: $1 (expected '$2', got '$3')"; fi; }
 
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
-SECRET_FILE="$TMP/secret.txt"; echo "Pinguin" > "$SECRET_FILE"
+SECRET_FILE="$TMP/secret.txt"; echo "Penguin" > "$SECRET_FILE"
 ABORT_LOCK_TIMEOUT=60; ABORT_ANSWER_TIMEOUT=60
 
-# Attrappen. Uhr und Zaehler liegen in DATEIEN, weil ab_ask in $(...) (Subshell) laeuft.
-# UNLOCK_AT = ab wann entsperrt; ANSWERS = Popup-Antworten der Reihe nach
+# Fakes. Clock and counter live in FILES because ab_ask runs in $(...) (subshell).
+# UNLOCK_AT = unlocked from then on; ANSWERS = popup answers in order
 setup(){ echo 1000 > "$TMP/now"; echo 0 > "$TMP/asked"; UNLOCK_AT=${1:-999999}; LID=${2:-open}; DISP=${3:-awake}; ANSWERS=("${@:4}"); }
 ab_now(){ cat "$TMP/now"; }
 tick(){ echo $(( $(cat "$TMP/now") + $1 )) > "$TMP/now"; }
@@ -21,7 +21,7 @@ ab_sleep(){ tick 1; }
 ab_locked(){ [ "$(ab_now)" -lt "$UNLOCK_AT" ]; }
 ab_lid_closed(){ [ "$LID" = closed ]; }
 ab_display_off(){ [ "$DISP" = asleep ]; }
-ab_ask(){ # $1 = Sekunden bis Timeout; jede Antwort "kostet" 5 s, leer = Timeout
+ab_ask(){ # $1 = seconds until timeout; each answer "costs" 5 s, empty = timeout
   local n; n=$(( $(cat "$TMP/asked") + 1 )); echo "$n" > "$TMP/asked"
   local a="${ANSWERS[$((n - 1))]}"
   if [ -z "$a" ]; then tick "$1"; else tick 5; fi
@@ -30,48 +30,48 @@ ab_ask(){ # $1 = Sekunden bis Timeout; jede Antwort "kostet" 5 s, leer = Timeout
 asked(){ cat "$TMP/asked"; }
 run(){ why=$(wait_for_abort); rc=$?; }
 
-# 1) Niemand entsperrt -> nach ABORT_LOCK_TIMEOUT herunterfahren, kein Popup
+# 1) Nobody unlocks -> shut down after ABORT_LOCK_TIMEOUT, no popup
 setup; run
-check "gesperrt bleibt -> herunterfahren (rc 1)" 1 $rc
-check "gesperrt -> kein Popup" 0 "$(asked)"
+check "stays locked -> shut down (rc 1)" 1 $rc
+check "locked -> no popup" 0 "$(asked)"
 
-# 2) Entsperrt + richtige Antwort -> abbrechen
-setup 1010 open awake "Pinguin"; run
-check "entsperrt + richtig -> rc 0" 0 $rc
-check "Grund Geheimantwort" "Geheimantwort" "$why"
-check "Popup erst nach Entsperren, 1x" 1 "$(asked)"
+# 2) Unlocked + correct answer -> cancel
+setup 1010 open awake "Penguin"; run
+check "unlocked + correct -> rc 0" 0 $rc
+check "reason secret answer" "secret answer" "$why"
+check "popup only after unlocking, once" 1 "$(asked)"
 
-# 3) Gross/klein + Leerzeichen egal
-setup 1010 open awake " pInGuIn "; run
-check "Antwort normalisiert" 0 $rc
+# 3) Case and spaces don't matter
+setup 1010 open awake " pEnGuIn "; run
+check "answer normalized" 0 $rc
 
-# 4) Entsperrt + falsch, dann richtig -> Popup wiederholt, abbrechen
-setup 1010 open awake "falsch" "Pinguin"; run
-check "falsch dann richtig -> rc 0" 0 $rc
-check "Popup 2x" 2 "$(asked)"
+# 4) Unlocked + wrong, then correct -> popup repeated, cancel
+setup 1010 open awake "wrong" "Penguin"; run
+check "wrong then correct -> rc 0" 0 $rc
+check "popup twice" 2 "$(asked)"
 
-# 5) Entsperrt, aber keine Antwort (Timeout) -> herunterfahren
+# 5) Unlocked but no answer (timeout) -> shut down
 setup 1010 open awake ""; run
-check "entsperrt ohne Antwort -> rc 1" 1 $rc
+check "unlocked without answer -> rc 1" 1 $rc
 
-# 6) Entsperrt + immer falsch -> nach ABORT_ANSWER_TIMEOUT herunterfahren
-setup 1010 open awake falsch falsch falsch falsch falsch falsch falsch falsch falsch falsch falsch falsch falsch; run
-check "immer falsch -> rc 1" 1 $rc
+# 6) Unlocked + always wrong -> shut down after ABORT_ANSWER_TIMEOUT
+setup 1010 open awake wrong wrong wrong wrong wrong wrong wrong wrong wrong wrong wrong wrong wrong; run
+check "always wrong -> rc 1" 1 $rc
 
-# 7) Deckel zu waehrend gesperrt -> abbrechen (niemand kann tippen)
+# 7) Lid closed while locked -> cancel (nobody can type)
 setup 999999 closed; run
-check "Deckel zu -> rc 0" 0 $rc
-check "Grund Deckel zu" "Deckel zu" "$why"
+check "lid closed -> rc 0" 0 $rc
+check "reason lid closed" "lid closed" "$why"
 
-# 8) Display aus waehrend gesperrt -> abbrechen (niemand am Mac)
+# 8) Display off while locked -> cancel (nobody at the Mac)
 setup 999999 open asleep; run
-check "Display aus -> rc 0" 0 $rc
-check "Grund Display aus" "Display aus" "$why"
+check "display off -> rc 0" 0 $rc
+check "reason display off" "display off" "$why"
 
-# 9) Keine Geheimantwort eingerichtet -> Entsperren reicht
+# 9) No secret answer set up -> unlocking is enough
 rm -f "$SECRET_FILE"; setup 1010; run
-check "ohne secret.txt: Entsperren reicht" 0 $rc
-check "Grund entsperrt" "entsperrt (keine Geheimantwort eingerichtet)" "$why"
-check "ohne secret.txt: kein Popup" 0 "$(asked)"
+check "without secret.txt: unlocking is enough" 0 $rc
+check "reason unlocked" "unlocked (no secret answer set up)" "$why"
+check "without secret.txt: no popup" 0 "$(asked)"
 
-echo "$pass ok, $fail fehlgeschlagen"; [ $fail -eq 0 ]
+echo "abort-lib: $pass ok, $fail failed"; [ $fail -eq 0 ]

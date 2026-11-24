@@ -1,37 +1,37 @@
 #!/bin/bash
-# Loest intruder-snap.sh NUR aus, wenn jemand am GESPERRTEN, AUFGEKLAPPTEN Mac
-# mehrfach das falsche Passwort eingibt. Ignoriert: entsperrte Sitzung (sudo-
-# Vertipper, App-Abfragen), Zuklappen/Aufklappen (macOS loggt dabei Auth-
-# Fehlschlaege) und Doppel-Eintraege desselben Versuchs.
+# Triggers intruder-snap.sh ONLY when someone enters the wrong password several
+# times at the LOCKED Mac with the LID OPEN. Ignored: unlocked session (sudo typos,
+# app prompts), closing/opening the lid (macOS logs auth failures then) and
+# duplicate entries of the same attempt.
 export PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
-THRESH=2            # echte Fehlversuche bis Ausloesung
-WINDOW=120          # innerhalb dieser Sekunden
-COOLDOWN=300        # danach Ruhe
-WAKE_GRACE=15       # Sekunden nach Aufwachen ignorieren
-LID_GRACE=2         # Sekunden nach Aufklappen/Aufwachen ignorieren. macOS schreibt
-                    # eigene Fehlschlaege nur bei ZUGEKLAPPTEM Deckel (gemessen
-                    # 2026-11-23); die faengt "Deckel zu" bzw. Logzeit < Markierung ab.
-BURST=2             # Eintraege mit Logzeit-Abstand < BURST s = ein Versuch
-SETTLE=2            # kurz warten, damit der Deckel-Zustand aktuell ist
-POLL=2              # Abfrage-Intervall Heartbeat/Deckel
-SLEEP_GAP=10        # Poll-Luecke groesser als das = Mac hat geschlafen
-FLUSH_EVERY=60      # Sekunden: wartende Telegram-Fotos erneut senden
-WARN_EVERY=3600     # Warnung "Sperr-Erkennung kaputt" hoechstens so oft
+THRESH=2            # real failed attempts until the alarm
+WINDOW=120          # within this many seconds
+COOLDOWN=300        # quiet period afterwards
+WAKE_GRACE=15       # ignore for this many seconds after waking up
+LID_GRACE=2         # ignore for this many seconds after opening/waking. macOS writes
+                    # its own failures only with the lid CLOSED (measured
+                    # 2026-11-23); "lid closed" or log time < mark catches those.
+BURST=2             # entries less than BURST s apart (log time) = one attempt
+SETTLE=2            # wait briefly so the lid state is current
+POLL=2              # polling interval for heartbeat/lid
+SLEEP_GAP=10        # a poll gap larger than this = the Mac was asleep
+FLUSH_EVERY=60      # seconds: retry queued Telegram photos
+WARN_EVERY=3600     # "lock detection broken" warning at most this often
 DIR="$HOME/Library/IntruderWatch"
 PY=/opt/homebrew/bin/python3
 HB="$DIR/.heartbeat"
-LID="$DIR/.lid_closed_at"   # letzter Moment: Deckel zu/auf, aufgewacht, Display an/aus
-DISP="$DIR/.display_state"  # awake|asleep, geschrieben von display-watch.py
+LID="$DIR/.lid_closed_at"   # last moment: lid closed/opened, woke up, display on/off
+DISP="$DIR/.display_state"  # awake|asleep, written by display-watch.py
 log(){ echo "$(date '+%F %T') $*" >> "$DIR/watch.log"; }
 
 # shellcheck source=watch-lib.sh
-. "$DIR/watch-lib.sh" || { log "watch-lib.sh fehlt"; exit 1; }
+. "$DIR/watch-lib.sh" || { log "watch-lib.sh missing"; exit 1; }
 # shellcheck source=telegram-lib.sh
-. "$DIR/telegram-lib.sh" || { log "telegram-lib.sh fehlt"; exit 1; }
+. "$DIR/telegram-lib.sh" || { log "telegram-lib.sh missing"; exit 1; }
 
-# Sperr-Erkennung pruefen. Liefert is_locked.py weder locked noch unlocked (z. B.
-# pyobjc fehlt nach Python-Update), wuerde der Waechter sonst STILL nie ausloesen.
-WARNF="$DIR/.last_lock_warn"   # Datei, weil lock_state in $(...) (Subshell) laeuft
+# Check lock detection. If is_locked.py returns neither locked nor unlocked (e.g.
+# pyobjc missing after a Python update), the watcher would otherwise SILENTLY never fire.
+WARNF="$DIR/.last_lock_warn"   # a file, because lock_state runs in $(...) (subshell)
 lock_state(){
   local s; s=$("$PY" "$DIR/is_locked.py" 2>&1)
   case "$s" in
@@ -40,20 +40,20 @@ lock_state(){
        local now last; now=$(date +%s); last=$(cat "$WARNF" 2>/dev/null || echo 0)
        if [ $((now - last)) -ge $WARN_EVERY ]; then
          echo "$now" > "$WARNF"
-         log "FEHLER Sperr-Erkennung kaputt: $(echo "$s" | tail -1)"
-         tg_text_or_queue "⚠️ IntruderWatch: Sperr-Erkennung kaputt – Alarm loest NICHT aus.
+         log "ERROR lock detection broken: $(echo "$s" | tail -1)"
+         tg_text_or_queue "⚠️ IntruderWatch: lock detection broken – the alarm will NOT fire.
 $(echo "$s" | tail -1)
 Fix: /opt/homebrew/bin/pip3 install --break-system-packages pyobjc-framework-Quartz" >/dev/null
        fi;;
   esac
 }
-[ "$(lock_state)" = broken ] && log "Start: Sperr-Erkennung kaputt (Telegram-Warnung gesendet)"
+[ "$(lock_state)" = broken ] && log "start: lock detection broken (Telegram warning sent)"
 
-# Hintergrund: Heartbeat + Zeitpunkt der letzten Deckel-/Aufwach-Bewegung. Die
-# Schonfrist LID_GRACE laeuft ab dem AUFKLAPPEN/AUFWACHEN, nicht ab dem letzten
-# "zu" vor dem Schlafen (sonst waere sie nach langem Schlaf schon abgelaufen).
+# Background: heartbeat + time of the last lid/wake movement. The grace period
+# LID_GRACE runs from OPENING/WAKING, not from the last "closed" before sleep
+# (otherwise it would already have expired after a long sleep).
 date +%s > "$HB"; date +%s > "$LID"
-rmdir "$TG_QUEUE/.lock" 2>/dev/null   # verwaiste Sperre nach Absturz/Herunterfahren
+rmdir "$TG_QUEUE/.lock" 2>/dev/null   # stale lock after a crash/shutdown
 ( prev=$(date +%s); was=$(lid_state)
   while true; do
     now=$(date +%s); is=$(lid_state)
@@ -62,12 +62,12 @@ rmdir "$TG_QUEUE/.lock" 2>/dev/null   # verwaiste Sperre nach Absturz/Herunterfa
     sleep $POLL
   done ) &
 BGPID=$!
-# Hintergrund: Display an/aus beobachten (macOS schreibt beim Sperren/Display-Aus
-# eigene Fehlschlaege, auch bei offenem Deckel)
+# Background: watch the display on/off (macOS writes its own failures on
+# locking/display off, even with the lid open)
 echo awake > "$DISP"
 "$PY" "$DIR/display-watch.py" "$DIR" 2>>"$DIR/launchd.err" &
 DWPID=$!
-# Hintergrund: Telegram-Warteschlange nachsenden (auch direkt nach Login/Neustart)
+# Background: resend the Telegram queue (also right after login/restart)
 ( while true; do tg_flush_queue; sleep $FLUSH_EVERY; done ) &
 FLPID=$!
 trap 'kill $BGPID $FLPID $DWPID 2>/dev/null' EXIT INT TERM
@@ -75,20 +75,20 @@ trap 'kill $BGPID $FLPID $DWPID 2>/dev/null' EXIT INT TERM
 times=""; last=0; last_counted=0
 /usr/bin/log stream --style compact --predicate 'process == "opendirectoryd" AND eventMessage CONTAINS "Failed SecureToken authentication" AND eventMessage CONTAINS "console domain"' |
 while read -r line; do
-  is_lockscreen_fail "$line" || continue   # nur Sperrbildschirm, keine Hintergrund-Pruefungen
-  ev=$(event_epoch "$line")        # Zeit des Ereignisses (nicht der Verarbeitung)
-  sleep $SETTLE                    # Poller Zeit geben, Aufklappen/Aufwachen zu markieren
+  is_lockscreen_fail "$line" || continue   # lock screen only, no background checks
+  ev=$(event_epoch "$line")        # time of the event (not of processing)
+  sleep $SETTLE                    # give the poller time to mark opening/waking
   lid=$(lid_state); [ "$lid" = closed ] && date +%s > "$LID"
   hb=$(cat "$HB" 2>/dev/null || echo 0)
   lid_at=$(cat "$LID" 2>/dev/null || echo 0)
   disp=$(cat "$DISP" 2>/dev/null || echo awake)
-  kill -0 $DWPID 2>/dev/null || log "WARNUNG display-watch.py laeuft nicht (Display-Schutz aus)"
+  kill -0 $DWPID 2>/dev/null || log "WARNING display-watch.py not running (display protection off)"
 
   if reason=$(ignore_reason "$ev" "$hb" "$lid" "$lid_at" "$last_counted" $WAKE_GRACE $LID_GRACE $BURST "$disp"); then
-    log "ignoriert ($reason)"; continue
+    log "ignored ($reason)"; continue
   fi
 
-  # Bildschirm gesperrt? sonst ignorieren (entsperrt = du arbeitest)
+  # Screen locked? Otherwise ignore (unlocked = you are working)
   [ "$(lock_state)" = locked ] || continue
 
   now=$ev
@@ -96,7 +96,7 @@ while read -r line; do
   # shellcheck disable=SC2086
   times=$(prune_times "$now" $WINDOW $times)
   n=$(echo "$times" | wc -w | tr -d ' ')
-  log "Sperrbildschirm-Fehlversuch $n/$THRESH"
+  log "lock-screen failed attempt $n/$THRESH"
   if [ "$n" -ge $THRESH ] && [ $((now-last)) -ge $COOLDOWN ]; then
     last=$now; times=""
     "$DIR/intruder-snap.sh" &

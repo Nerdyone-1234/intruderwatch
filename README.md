@@ -10,8 +10,6 @@ password + a secret answer).
 
 > **For your own devices only.** See [Legal](#legal) below.
 
-> The scripts, log messages and Telegram texts are in German.
-
 ## Components
 
 - `mac/intruder-watch.sh` – watches the macOS log for failed logins
@@ -74,7 +72,7 @@ are written atomically (`.tmp-*` first, then renamed). Only temporary errors
 JPEG) goes to `queue/.failed/` and does not block the other photos. A stale lock
 (> 5 min) is taken over. The watcher retries every `FLUSH_EVERY` (60) s and right
 after login/restart – as soon as Telegram is reachable, the photos arrive marked
-"⏳ Verspätet gesendet" (sent late). Entries older than 30 days are dropped.
+"⏳ Sent late". Entries older than 30 days are dropped.
 Logic in `mac/telegram-lib.sh`, tests: `bash tests/test-telegram-lib.sh`.
 
 ## Local copy on the phone
@@ -140,9 +138,9 @@ otherwise Terminal/iTerm/ghostty are killed and then the Mac shuts down.
 
 `install.sh` puts two apps on the desktop (rebuild: `bash mac/build-switch-apps.sh`):
 
-- **IntruderWatch AUS.app** (off) – turns everything off: watcher stopped, stays off
+- **IntruderWatch OFF.app** – turns everything off: watcher stopped, stays off
   after restart/login, a running alarm and its shutdown are cancelled.
-- **IntruderWatch AN.app** (on) – turns it back on.
+- **IntruderWatch ON.app** – turns it back on.
 
 Both report via macOS notification **and Telegram** (with time, Mac and user). If
 Telegram is blocked, the message is sent later (up to 24 h, even while the watcher
@@ -155,9 +153,9 @@ The launchd job `de.intruderwatch.health` runs `mac/intruder-health.sh` every
 log stream, `display-watch.py`), heartbeat, lock detection, Telegram config,
 installed files and the Telegram queue.
 
-- Watcher stopped → restarted automatically, Telegram "🔧 … neu gestartet".
+- Watcher stopped → restarted automatically, Telegram "🔧 … restarted automatically".
 - Other problem → Telegram warning (same warning at most every 6 h), all-clear
-  "✅ wieder alles ok" once fixed.
+  "✅ all ok again" once fixed.
 - Turned off on purpose (off app) → the check stays silent.
 
 Manual status: `bash ~/Library/IntruderWatch/intruder-health.sh --report`
@@ -168,7 +166,7 @@ Manual status: `bash ~/Library/IntruderWatch/intruder-health.sh --report`
 - **Cable (default):** leave `PHONE_WIFI` empty, plug the phone in via USB, allow
   USB debugging. Done.
 - **Wi-Fi:** run `adb tcpip 5555` once over the cable, then set
-  `PHONE_WIFI=<IP>:5555` in `config.sh` (guide: `docs/setup-wlan-adb.txt`).
+  `PHONE_WIFI=<IP>:5555` in `config.sh` (guide: `docs/setup-wifi-adb.txt`).
   USB remains the fallback.
 
 - During an alarm: Wi-Fi connected → use it; port open → reconnect; otherwise USB if
@@ -188,7 +186,7 @@ Manual status: `bash ~/Library/IntruderWatch/intruder-health.sh --report`
 - With Wi-Fi the phone needs a fixed IP in the router (DHCP reservation), otherwise
   `PHONE_WIFI` will eventually be wrong.
 - Status: `bash ~/Library/IntruderWatch/intruder-health.sh --report` shows
-  "Handy: erreichbar (…)" (phone reachable). Tests: `bash tests/test-phone-lib.sh`.
+  "Phone: reachable (…)". Tests: `bash tests/test-phone-lib.sh`.
 
 ## Trigger logic (avoiding false alarms)
 

@@ -1,0 +1,30 @@
+# Connect the phone via Wi-Fi adb (optional – without it IntruderWatch uses the USB cable)
+# Mac and phone must be on the same network. Reserve the phone's IP in the router
+# (DHCP reservation), otherwise PHONE_WIFI will eventually be wrong.
+
+# 1) Plug the phone in via USB once and allow USB debugging. Then on the Mac:
+adb devices                    # <SERIAL>  device
+adb tcpip 5555                 # turns on adb over Wi-Fi (port 5555)
+adb connect <PHONE-IP>:5555
+adb devices                    # <PHONE-IP>:5555  device  -> the cable can be unplugged
+
+# 2) Add to ~/Library/IntruderWatch/config.sh:
+#      : "${PHONE_WIFI:=<PHONE-IP>:5555}"
+#    Leave empty = cable only (USB mode).
+
+# After a phone reboot Wi-Fi mode is off. Just plug the cable in briefly: the
+# health check (every 30 min) runs `adb tcpip 5555` + connect by itself.
+# Right away by hand:  bash ~/Library/IntruderWatch/intruder-health.sh
+# (or repeat step 1).
+
+# Check:  bash ~/Library/IntruderWatch/intruder-health.sh --report
+#         -> "Phone: reachable (<PHONE-IP>:5555)"
+
+# Security: while Wi-Fi mode is on, adb is reachable on the local network (new
+# computers must be confirmed on the phone). Only use it on trusted networks,
+# not on public Wi-Fi.
+
+# Note for foldables (e.g. Galaxy Z Fold): two displays. Take screenshots with a
+# display ID, otherwise a warning ends up inside the PNG:
+#   adb shell dumpsys SurfaceFlinger --display-id
+#   adb exec-out screencap -d <DISPLAY-ID> -p > screen.png

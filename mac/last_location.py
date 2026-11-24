@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Letzten bekannten Handy-Standort aus `adb shell dumpsys location` lesen.
+"""Read the phone's last known location from `adb shell dumpsys location`.
 
-Aufruf:  adb shell dumpsys location | last_location.py <uptime-sekunden>
-  <uptime-sekunden> = erste Zahl aus `adb shell cat /proc/uptime` (fuer das Alter).
+Usage:  adb shell dumpsys location | last_location.py <uptime-seconds>
+  <uptime-seconds> = first number of `adb shell cat /proc/uptime` (for the age).
 
-Ausgabe: JSON wie Termux-location.json (latitude, longitude, accuracy) plus
-provider, age_s (Sekunden seit der Messung, leer wenn unbekannt) und source.
-Gewinnt der neueste Eintrag, bei Gleichstand der genauere. Exit 1 = kein Standort.
+Output: JSON like Termux' location.json (latitude, longitude, accuracy) plus
+provider, age_s (seconds since the fix, empty if unknown) and source.
+The newest entry wins, on a tie the more accurate one. Exit 1 = no location.
 
-Braucht keine App-Berechtigung: funktioniert auch, wenn Android 16 Termux:API
-im Hintergrund den Standort verweigert.
+Needs no app permission: works even when Android 16 denies Termux:API
+the location in the background.
 """
 import json
 import re
@@ -24,7 +24,7 @@ UNIT_SECONDS = {"d": 86400, "h": 3600, "m": 60, "s": 1, "ms": 0.001}
 
 
 def et_seconds(text):
-    """'+2d3h4m5s6ms' (ohne +) -> Sekunden seit Systemstart."""
+    """'+2d3h4m5s6ms' (without +) -> seconds since boot."""
     return sum(int(n) * UNIT_SECONDS[u] for n, u in ET_PART_RE.findall(text))
 
 
@@ -40,7 +40,7 @@ def parse(dump):
 
 
 def best(locations):
-    """Neuester Eintrag; bei gleichem Zeitpunkt der genauere."""
+    """Newest entry; at the same time the more accurate one."""
     return max(locations, key=lambda l: (l["et"], -(l["accuracy"] if l["accuracy"] is not None else 1e9)),
                default=None)
 
